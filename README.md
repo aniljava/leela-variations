@@ -14,3 +14,7 @@ suggested by Leelas as alternative variations.
 2. Install dependencies `pip install gomill`
 3. ./generator input.sgf output.sgf
 4. Let the program run
+
+
+# Todo
+- Extend variation by further play on branches.
