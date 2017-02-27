@@ -1,0 +1,284 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+import subprocess
+import threading
+import gomill.sgf
+import gomill.boards
+
+## Edit and add binary name on top for differnt version, or preferred binary
+LEELA_BINARIES = [
+    './leela_090_linux_x64_opencl',
+    './leela_090_linux_x64',
+]
+ARGS = ['-g']
+
+CRLF = '\n\n' # Line Terminator for GTP
+CHARS = 'ABCDEFGHJKLMNOPQRST'
+std_err_buffer = []
+active = True
+
+
+class Node:
+    def __init__(self, name, description=None):
+        self.name = name
+        self.childs = []
+        self.description = description
+
+    def get(self, name, description = None):
+        for child in self.childs:
+            if child.name == name:
+                return child
+        child = Node(name, description=description)
+        self.childs.append(child)
+        return child
+
+
+def main():
+    if len(sys.argv) < 3:
+        print 'USAGE'
+        print 'generator <source_sgf> <dest_sgf>'
+        return
+
+    source_sgf = sys.argv[1]
+    dest_sgf = sys.argv[2]
+
+    if not os.path.exists(source_sgf):
+        print 'input sgf : [{}] does not exists'.format(source_sgf)
+        return
+
+    process = start_gtp()
+    gtp_in, gtp_out, gtp_err = process.stdin, process.stdout, process.stderr
+
+    if process is None:        
+        return
+
+    # start stderr thread
+    err_thread = threading.Thread(target=std_err_buffer_thread, args=(gtp_err , process))
+    err_thread.setDaemon(True)
+    err_thread.start()
+
+    write_command(gtp_in, 'clear_board' + CRLF)
+    read_response(gtp_out, lines=1)
+    start_up_message = get_buffer() # Clear initial debug messages
+
+    source_game = gomill.sgf.Sgf_game.from_string(open(source_sgf).read())
+    out_game = gomill.sgf.Sgf_game(19)
+    last_node = out_game.extend_main_sequence()
+
+    
+
+    converged_root = Node('ROOT')
+    converged_last = converged_root
+    
+    for move_no, node in enumerate(source_game.get_main_sequence(), start=1):
+        color, pos = node.get_move()
+        if pos is None:            
+            continue  # ROOT NODE
+        
+        y, x = pos
+        translated = '{}{}'.format(CHARS[x], y + 1)
+
+        log('Source', move=move_no, color=color, pos=pos, alpha=translated)
+
+        converged_last.get(translated)
+        if move_no == 2:
+            command = 'play {} {}'.format(color, translated)
+            write_command(gtp_in, command + CRLF)
+            read_response(gtp_out, lines=1)
+            main = last_node
+            main.set_move(color, (y, x))  # Extend main sequence                        
+        else:
+            get_buffer() # Discard old buffer
+            command = 'genmove {}\n\n'.format(color)
+            gtp_in.write(command)
+            result = read_response(gtp_out, lines=1)
+            result = result.split('= ')[1]
+            y_1, x_1 = alfa_to_num(result)
+            logs = get_buffer()
+
+            converged_last.get(result)
+
+            main = last_node.new_child()
+            main.set_move(color, (y, x))  # Is a match, no variation required
+            
+
+            branches = []
+            log_text = '\n'.join(logs)
+            # main.set('C', log_text)
+            
+            root = Node('ROOT')
+            if (y, x) != (y_1, x_1):
+                root.get(result, description = 'Suggested Move')
+
+            for line in logs:
+                if 'PV:' not in line:
+                    continue
+                parts = line.split('PV: ')
+                if len(parts) == 1:
+                    continue
+                
+                branch = parts[1]
+                branch_moves = branch.split(' ')
+
+                if len(branch_moves) < 2:
+                    continue
+                
+                last = root
+                c_last = converged_last
+                for m in branch_moves:
+                    last = last.get(m)
+                    c_last = c_last.get(m)
+
+
+            for c in root.childs:
+                add_recursive(last_node,c, color)
+
+
+
+
+            # for line in logs:
+            #     line = line.strip()                
+            #     if '->' in line:
+            #         line = line.strip()
+            #         parts = line.split('PV: ')
+            #         if len(parts) > 1:
+            #             branch = parts[1]
+            #             if not branch in branches:
+            #                 branches.append(branch)                            
+            #                 # branch_node.set_move(color, (y, x))  # Is a match, no variation required            
+            #                 # branch_node = side.new_child()
+            #                 branch_main = last_node
+            #                 branch_moves = branch.split(' ')
+            #                 last_color = color                            
+            #                 commented = False
+            #                 for m in branch_moves: 
+            #                     branch_node = branch_main.new_child()
+            #                     branch_main = branch_node
+            #                     if not commented:
+            #                         commented = True
+            #                         branch_node.set("C", line)
+            #                         print 'ADDED COMMENT'
+            #                     y_1, x_1 = alfa_to_num(m)
+            #                     branch_node.set_move(last_color,(y_1, x_1))                                                                                    
+            #                     if last_color == 'b':
+            #                         last_color = 'w'
+            #                     else:
+            #                         last_color = 'b'
+
+            if (y, x) != (y_1, x_1):
+                suggested = last_node.new_child()
+                suggested.set_move(color, (y_1, x_1))  # Suggested
+
+                # Undo the move
+                command = 'undo\n\n'
+                gtp_in.write(command)
+                read_response(gtp_out, lines=1)
+                
+                # PLAY THE ACTUAL MOVE
+                command = 'play {} {}\n\n'.format(color, translated)
+                gtp_in.write(command)
+                read_response(gtp_out, lines=1)
+                get_buffer() # Discard old buffer
+            last_node = main
+            converged_last = converged_last.get(translated)
+
+    
+
+
+
+        print 'MOVE {} : {}, {}, {}'.format(move_no, color, x, y)
+        save_game(out_game, dest_sgf)      
+        save_node_game(converged_root, 'testt.sgf')  
+
+    #END
+## Add recursive
+def add_recursive(gn, n, c):
+    y_2, x_2 = alfa_to_num(n.name)
+    child = gn.new_child()
+    child.set_move(c, (y_2, x_2))
+    if c == 'b':
+        c = 'w'
+    else:
+        c = 'b'
+    for k in n.childs:
+        add_recursive(child,k,c)
+
+def save_node_game(game, path):
+    out_game = gomill.sgf.Sgf_game(19)
+    last_node = out_game.extend_main_sequence()
+    for c in game.childs:
+        add_recursive(last_node, c, 'b')
+
+    save_game(out_game,path)
+
+
+
+def save_game(game,path):
+    sgf_text = game.serialise()    
+    open(path, 'w').write(sgf_text)
+
+def log(*args, **params):
+    print args
+    print params
+
+def read_response(reader, lines=4):
+    response = ''
+
+    for x in range(lines + 1):
+        line = reader.readline()        
+        if response == '' and line.strip() != '':
+            response = line
+    return response.strip()
+
+
+def alfa_to_num(alfa):
+    y = alfa[0]
+    x = alfa[1:]
+    y = CHARS.index(y)
+    return int(x) - 1, int(y)
+
+def get_buffer():
+    ''' Returns current buffers and clears it '''
+    global std_err_buffer
+    old = std_err_buffer
+    std_err_buffer = []
+    return old
+
+def write_command(stream, command):
+    # delegate to ease debugging. Writes to stdin of process
+    stream.write(command)
+
+
+def std_err_buffer_thread(stream, process):
+    global std_err_buffer
+    global active
+
+    while process.poll() is None and active :
+        line = stream.readline()
+        line = line.strip()
+        std_err_buffer.append(line)
+
+def start_gtp():
+    binary = None
+    for entry in LEELA_BINARIES:
+        if os.path.exists(entry):
+            binary = entry
+            break;
+
+    if binary is None:
+        print 'None of leela binaries found among following checked binaries:'
+        print '    ' + '\n    '.join(LEELA_BINARIES)
+        return
+
+    process = subprocess.Popen(
+        [binary] + ARGS,         # Shell script that starts the GTP instance
+        stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    return process
+
+main()
