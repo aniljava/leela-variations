@@ -205,7 +205,7 @@ def main():
 
         print 'MOVE {} : {}, {}, {}'.format(move_no, color, x, y)
         save_game(out_game, dest_sgf)      
-        save_node_game(converged_root, 'testt.sgf')  
+        # save_node_game(converged_root, 'testt.sgf')  # Different branching strategy
 
     #END
 ## Add recursive
