@@ -14,9 +14,9 @@ Takes a while to complete the playout producting destination.sgf with variations
 
 # Running on windows (Not tested)
 1. Download windows version of leela and edit script to change the filename. Other things should work without problem.
-2. Download GTP Version.
+2. Download GTP Version from : https://sjeng.org/leela.html
 
-# Todo
+# Further improvement
 - Extend variation using actual extended play in branches as well (Will take forever to finish a game though).
 
 
