@@ -13,7 +13,12 @@ done in next move but provides a close picture of moves to come.
 Takes a while to complete the playout producting destination.sgf with variations along the way.
 
 # Running on windows (Not tested)
-Download windows version of leela and edit script to change the filename. Other things should work without problem.
+1. Download windows version of leela and edit script to change the filename. Other things should work without problem.
+2. Download GTP Version.
 
 # Todo
 - Extend variation using actual extended play in branches as well (Will take forever to finish a game though).
+
+
+# License
+This project is copyleft. The see leela-binary/LICENSE for leela's license.
