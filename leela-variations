@@ -7,12 +7,20 @@ import subprocess
 import threading
 import gomill.sgf
 import gomill.boards
+import platform
 
 ## Edit and add binary name on top for differnt version, or preferred binary
-LEELA_BINARIES = [
-    './leela_090_linux_x64_opencl',
-    './leela_090_linux_x64',
+LEELA_BINARIES = [    
+    './leela-binary/leela_090_linux_x64_opencl',
+    './leela-binary/leela_090_linux_x64',
 ]
+
+if platform.system() == 'Windows':
+    LEELA_BINARIES = [
+        '/leela-binary/Leela090GTP_OpenCL.exe',
+        '/leela-binary/Leela090GTP.exe'
+    ]
+
 ARGS = ['-g']
 
 CRLF = '\n\n' # Line Terminator for GTP
@@ -106,8 +114,14 @@ def main():
             
 
             branches = []
-            log_text = '\n'.join(logs)
-            # main.set('C', log_text)
+            comment = ''
+            move_match = ''
+            if (y, x) != (y_1, x_1):
+                move_match = ' DIFFERENT '
+
+            comment += 'Move Suggested by Leela {} : {} \n\n'.format(move_match, result)
+            comment +=  '\n'.join(logs)
+            main.set('C', comment)
             
             root = Node('ROOT')
             if (y, x) != (y_1, x_1):
