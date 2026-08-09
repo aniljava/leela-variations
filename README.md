@@ -1,3 +1,5 @@
+
+
 # leela-variations
 
 Generates variations for each move in given SGF file. The variations are the top branches
@@ -7,7 +9,7 @@ done in next move but provides a close picture of moves to come.
 
 # Running the program (Tested in Ubuntu/Linux)
 1. If new version of Leela is available (9.0 is included in `leela-binary` folder , download the binary and replace contents of `leela-binary` folder. Make edit main script `leela-variation` to change the name of binary file.
-2. Execute scrupt as `./leela-variations <source.sgf> <destination.sgf>`
+2. Execute script as `./leela-variations <source.sgf> <destination.sgf>`
 
 Takes a while to complete the playout producting destination.sgf with variations along the way.
 
